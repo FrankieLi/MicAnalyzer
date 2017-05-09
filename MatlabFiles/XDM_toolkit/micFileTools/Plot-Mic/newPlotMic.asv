@@ -1,0 +1,637 @@
+function varargout = newPlotMic(varargin)
+% newPlotMic -
+%
+%   USAGE:
+%
+%   newPlotMic(snp, sw, plotType, minConf)
+%
+%   INPUT:
+%
+%   snp is n x 10, 
+%       is a standard mic file that will be displayed.
+%   sw is numeric,
+%       is the sidewidth of the sample the mic file corresponds to.
+%   plotType is numeric,
+%       is a number corresponding to the type of plot initially displayed.
+%       An Euler angle based plot is associated with "1". A plot on the
+%       confidence values is associated with "2". To plot the Rodriguez
+%       vectors, plotType should be set to "3". Once the initial graph is
+%       displayed, the plot can be freely changed between these three
+%       types.
+%   minConf is numeric,
+%       is the minimum confidence value which a voxel must have a greater
+%       confidence value than in order to be plotted. Confidence values can
+%       range from zero to one, inclusive. Once the initial graph is 
+%       displayed, the exact value of minConf can be freely changed.
+%
+%   OUTPUT:
+%
+%   none
+%
+%   NOTES:
+%
+%   While fully functional, this GUI is prone to crashing under certain
+%   circumstances. To avoid this, when one selects "Set Regions", it is
+%   necessary to determine BOTH regions before selecting another button.
+%   Clicking on another button before determining the two regions will
+%   results in an error.
+%
+
+% Last Modified by G
+
+% Begin initialization code - DO NOT EDIT
+gui_Singleton = 1;
+gui_State = struct('gui_Name',       mfilename, ...
+                   'gui_Singleton',  gui_Singleton, ...
+                   'gui_OpeningFcn', @newPlotMic_OpeningFcn, ...
+                   'gui_OutputFcn',  @newPlotMic_OutputFcn, ...
+                   'gui_LayoutFcn',  [] , ...
+                   'gui_Callback',   []);
+if nargin && ischar(varargin{1})
+    gui_State.gui_Callback = str2func(varargin{1});
+end
+
+if nargout
+    [varargout{1:nargout}] = gui_mainfcn(gui_State, varargin{:});
+else
+    gui_mainfcn(gui_State, varargin{:});
+end
+% End initialization code - DO NOT EDIT
+
+end
+
+
+% --- Executes just before newPlotMic is made visible.
+function newPlotMic_OpeningFcn(hObject, eventdata, handles, varargin)
+% This function has no output args, see OutputFcn.
+% hObject    handle to figure
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+% varargin   command line arguments to newPlotMic (see VARARGIN)
+
+% Choose default command line output for newPlotMic
+handles.output = hObject;
+handles.snp = varargin{1};
+handles.sw = varargin{2};
+handles.minConf = varargin{4};
+handles.clickData = [];
+handles.region1 = [];
+handles.region2 = [];
+handles.diffData = [];
+handles.currPlot = [];
+
+minConf = handles.minConf;
+set(handles.confEdit, 'String', minConf); 
+snp = handles.snp;
+ind =  (snp(:,10)>minConf);
+activeSnp = snp(ind, :);
+handles.activeSnp = activeSnp;
+
+% Update handles structure
+guidata(hObject, handles);
+
+snp = handles.snp;
+sidewidth = handles.sw;
+plotType = varargin{3};
+handles.currPlot = plotType;
+ConfidenceRange = handles.minConf;
+cla reset;
+
+  ConfSize = size( ConfidenceRange );
+  if( ConfSize(1) > 1 || ConfSize(2) > 1 )
+    disp('Confidance range not yet supported');
+  else
+    findvec = snp(:, 10) > ConfidenceRange ;
+  end
+  snp = snp(findvec, :);
+
+  [tri_x, tri_y, snp_Euler, snp_Conf ] = GetTriangleVertices( snp, sidewidth );
+
+  % plot grain
+  if(plotType == 1)
+    tmp =  [ snp_Euler ]/480;
+    tmp = [1-tmp(:, 1), tmp(:, 2), 1-tmp(:, 3)];
+  elseif(plotType == 2) % plot confidence map
+
+    tempMin = min(min(snp_Conf), handles.minConf);
+    tmp = [ snp_Conf ];
+    tmp = tmp/max(tmp);
+    tmp = [tmp, zeros(length(tmp), 1), 1-tmp];
+    
+    xConf = [tempMin:0.01:max(snp_Conf)]';
+    colormap( [ xConf, xConf * 0, 1- xConf]  );
+    caxis( [tempMin, max(snp_Conf) ] );
+    colorbar( 'location', 'eastoutside');
+    
+  elseif(plotType==3) % plot rodrigues vectors
+    tmp =   snp_Euler * (pi/180);
+    % convert
+    for i = 1:length(tmp)
+      tmpR = getEuler_rad_pos(tmp(i, :));
+      tmp(i, :) = MatrixToRFVector(tmpR);
+    end
+
+    tmp(:, 1) =  tmp(:, 1) - min(tmp(:, 1))  ;
+    tmp(:, 2) =  tmp(:, 2) - min(tmp(:, 2))  ;
+    tmp(:, 3) =  tmp(:, 3) - min(tmp(:, 3))  ;
+
+
+    tmp(:, 3) = tmp(:, 3) / max(tmp(:, 3));
+    tmp(:, 2) = tmp(:, 2) / max(tmp(:, 2));
+    tmp(:, 1) = tmp(:, 1) / max(tmp(:, 1));
+
+
+  elseif(plotType == 4) % plot pole figure
+    tmp = fixedEulerColor( snp_Euler );
+  elseif(plotType == 5)
+    disp('IPF');
+    tmp = inversePoleFigureColor([ snp_Euler ] * pi/180);
+
+  elseif(plotType == 6)
+
+    tmp =  [snp_Euler]/480;
+    tmp = [1-tmp(:, 1), tmp(:, 2), 1-tmp(:, 3)];
+    size_vec = size(tmp);
+    tri_color = ones(1, size_vec(1), size_vec(2));
+    % figure;
+    axis equal;
+    h = patch(tri_x, tri_y, tri_color);
+  end
+  
+  if( plotType ~= 6 )
+    size_vec = size(tmp);
+    tri_color = zeros(1, size_vec(1), size_vec(2));
+    tri_color(1, :, :) = tmp;
+    %figure;
+    axis([ -sidewidth, sidewidth, -sidewidth, sidewidth], 'square');
+    h = patch(tri_x, tri_y,  tri_color, 'EdgeColor', 'none');
+  end
+
+
+  box on;
+  axis square;
+
+
+% Update handles structure
+guidata(hObject, handles);
+
+% UIWAIT makes newPlotMic wait for user response (see UIRESUME)
+% uiwait(handles.figure1);
+end
+
+
+% --- Outputs from this function are returned to the command line.
+function varargout = newPlotMic_OutputFcn(hObject, eventdata, handles) 
+% varargout  cell array for returning output args (see VARARGOUT);
+% hObject    handle to figure
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Get default command line output from handles structure
+varargout{1} = handles.output;
+end
+
+
+function confEdit_Callback(hObject, eventdata, handles)
+% hObject    handle to confEdit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of confEdit as text
+%        str2double(get(hObject,'String')) returns contents of confEdit as a double
+
+minConf = str2double(get(hObject, 'String'));
+handles.minConf = minConf;
+snp = handles.snp;
+ind = snp(:,10)>minConf;
+activeSnp = snp(ind, :);
+handles.activeSnp = activeSnp;
+
+% Update handles structure
+guidata(hObject, handles);
+
+end
+
+% --- Executes during object creation, after setting all properties.
+function confEdit_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to confEdit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+end
+
+
+% --- Executes on button press in orientationPush.
+function orientationPush_Callback(hObject, eventdata, handles)
+% hObject    handle to orientationPush (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+t1 = handles.uitable1;
+t2 = handles.uitable2;
+set(t1, 'Data', []);
+set(t2, 'Data', []);
+
+snp = handles.snp;
+sidewidth = handles.sw;
+ConfidenceRange = handles.minConf;
+cla reset;
+handles.currPlot = 1;
+
+  ConfSize = size( ConfidenceRange );
+  if( ConfSize(1) > 1 || ConfSize(2) > 1 )
+    disp('Confidance range not yet supported');
+  else
+    findvec = snp(:, 10) > ConfidenceRange ;
+  end
+  snp = snp(findvec, :);
+
+  [tri_x, tri_y, snp_Euler, snp_Conf ] = GetTriangleVertices( snp, sidewidth );
+
+  % plot grain
+    tmp =  [ snp_Euler ]/480;
+    tmp = [1-tmp(:, 1), tmp(:, 2), 1-tmp(:, 3)];
+  
+    size_vec = size(tmp);
+    tri_color = zeros(1, size_vec(1), size_vec(2));
+    tri_color(1, :, :) = tmp;
+    %figure;
+    axis([ -sidewidth, sidewidth, -sidewidth, sidewidth], 'square');
+    h = patch(tri_x, tri_y,  tri_color, 'EdgeColor', 'none');
+
+
+  box on;
+  axis square;
+
+  % Update handles structure
+  guidata(hObject, handles);
+
+end
+
+
+% --- Executes on button press in confidencePush.
+function confidencePush_Callback(hObject, eventdata, handles)
+% hObject    handle to confidencePush (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+t1 = handles.uitable1;
+t2 = handles.uitable2;
+set(t1, 'Data', []);
+set(t2, 'Data', []);
+
+snp = handles.snp;
+sidewidth = handles.sw;
+ConfidenceRange = handles.minConf;
+cla reset;
+
+handles.currPlot = 2;
+
+  ConfSize = size( ConfidenceRange );
+  if( ConfSize(1) > 1 || ConfSize(2) > 1 )
+    disp('Confidance range not yet supported');
+  else
+    findvec = snp(:, 10) > ConfidenceRange ;
+  end
+  snp = snp(findvec, :);
+
+  [tri_x, tri_y, snp_Euler, snp_Conf ] = GetTriangleVertices( snp, sidewidth );
+
+   % plot confidence map
+
+    tmp =  snp_Conf;
+    tmp = tmp/max(tmp);
+    tmp = [tmp, zeros(length(tmp), 1), 1-tmp];
+    
+    tempMin = min( min(snp_Conf), handles.minConf );
+    xConf = ( tempMin:0.01:max(snp_Conf) )';
+    colormap( [ xConf, xConf * 0, 1- xConf]  );
+    caxis( [tempMin, max(snp_Conf) ] );
+    colorbar( 'location', 'eastoutside');
+    
+    size_vec = size(tmp);
+    tri_color = zeros(1, size_vec(1), size_vec(2));
+    tri_color(1, :, :) = tmp;
+    %figure;
+    axis([ -sidewidth, sidewidth, -sidewidth, sidewidth], 'square');
+    h = patch(tri_x, tri_y,  tri_color, 'EdgeColor', 'none');
+    
+  box on;
+  axis square;
+  % Update handles structure
+  guidata(hObject, handles);
+  
+end
+
+
+% --- Executes on button press in rodriguezPush.
+function rodriguezPush_Callback(hObject, eventdata, handles)
+% hObject    handle to rodriguezPush (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+t1 = handles.uitable1;
+t2 = handles.uitable2;
+set(t1, 'Data', []);
+set(t2, 'Data', []);
+
+snp = handles.snp;
+sidewidth = handles.sw;
+ConfidenceRange = handles.minConf;
+cla reset;
+
+handles.currPlot = 3;
+
+  ConfSize = size( ConfidenceRange );
+  if( ConfSize(1) > 1 || ConfSize(2) > 1 )
+    disp('Confidance range not yet supported');
+  else
+    findvec = snp(:, 10) > ConfidenceRange ;
+  end
+  snp = snp(findvec, :);
+
+  [tri_x, tri_y, snp_Euler, snp_Conf ] = GetTriangleVertices( snp, sidewidth );
+
+
+   % plot rodrigues vectors
+    tmp =   snp_Euler  * (pi/180);
+    % convert
+    for i = 1:length(tmp)
+      tmpR = getEuler_rad_pos(tmp(i, :));
+      tmp(i, :) = MatrixToRFVector(tmpR);
+    end
+
+    tmp(:, 1) =  tmp(:, 1) - min(tmp(:, 1))  ;
+    tmp(:, 2) =  tmp(:, 2) - min(tmp(:, 2))  ;
+    tmp(:, 3) =  tmp(:, 3) - min(tmp(:, 3))  ;
+
+
+    tmp(:, 3) = tmp(:, 3) / max(tmp(:, 3));
+    tmp(:, 2) = tmp(:, 2) / max(tmp(:, 2));
+    tmp(:, 1) = tmp(:, 1) / max(tmp(:, 1));
+
+    size_vec = size(tmp);
+    tri_color = zeros(1, size_vec(1), size_vec(2));
+    tri_color(1, :, :) = tmp;
+    %figure;
+    axis([ -sidewidth, sidewidth, -sidewidth, sidewidth], 'square');
+    h = patch(tri_x, tri_y,  tri_color, 'EdgeColor', 'none');
+
+  box on;
+  axis square;
+  % Update handles structure
+  guidata(hObject, handles);
+end
+
+
+  function [tri_x, tri_y, snp_Euler, snp_Conf ] = GetTriangleVertices( snp, sidewidth )
+
+  snp(:,5) = 2.^ snp(:, 5);
+
+  % find range
+  max_x = 1*sidewidth;
+  max_y = 1*sidewidth;
+  min_x = -1*sidewidth;
+  min_y = -1*sidewidth;
+
+  % find all fitted triangles
+  snp = sortrows(snp, 6);
+  findvec = snp(:, 6) > 0;
+  snp = snp(findvec, :);
+
+  % sort by triangle
+  snp = sortrows(snp, 4);
+
+  % find triangles pointing up
+  downsIndex = snp(:, 4) > 1;
+  upsIndex = snp(:, 4) <= 1;
+
+  ups = snp(upsIndex, :);
+  downs = snp(downsIndex, :);
+
+
+  ups_sides = sidewidth ./ ups(:, 5);
+  downs_sides = sidewidth ./ downs(:, 5);
+
+  % calculate ups v1, ups v2, and ups v3
+  ups_v1 = ups(:, 1:2);      % (x, y)
+  ups_v2 = ups(:, 1:2);
+  ups_v2(:, 1) = ups_v2(:, 1) + ups_sides;  % (x+s, y) direction
+  ups_v3 = ups(:, 1:2);
+  ups_v3(:, 1) = ups_v3(:, 1) + ups_sides/2; % (x+s/2, y)
+  ups_v3(:, 2) = ups_v3(:, 2) + ups_sides/2 * sqrt(3); % (x+s/2, y+s/2 *sqrt(3));
+
+
+  % calculate downs v1, downs v2, and downs v3
+  downs_v1 = downs(:, 1:2);      % (x, y)
+  downs_v2 = downs(:, 1:2);
+  downs_v2(:, 1) = downs_v2(:, 1) + downs_sides;  % (x+s, y) direction
+  downs_v3 = downs(:, 1:2);
+  downs_v3(:, 1) = downs_v3(:, 1) + downs_sides/2; % (x+s/2, y)
+  downs_v3(:, 2) = downs_v3(:, 2) - downs_sides/2 * sqrt(3); % (x+s/2, y - s/2 *sqrt(3));
+
+  % format is in [v1; v2; v3], where v1, v2, and v3 are rol vectors
+  tri_x = [ [ups_v1(:, 1); downs_v1(:, 1)]'; [ups_v2(:, 1); downs_v2(:, 1)]'; [ups_v3(:, 1); downs_v3(:, 1)]'];
+  tri_y = [ [ups_v1(:, 2); downs_v1(:, 2)]'; [ups_v2(:, 2); downs_v2(:, 2)]'; [ups_v3(:, 2); downs_v3(:, 2)]'];
+
+  snp_Reordered = [ ups; downs];
+  snp_Euler = snp_Reordered( :, 7:9 );
+  snp_Conf  = snp_Reordered( :, 10  );
+  end
+
+  function colorOut = fixedEulerColor(Eu)
+
+  colorOut = Eu;
+  EuSize = size(Eu);
+  EuLength = EuSize(1);
+
+  % calculate misorientation from fixed color and vectors
+
+  %
+  %  (35, 45, 0)
+  %  (90, 35, 45)
+  %  (42, 37, 9)
+  %  (59, 37, 63)
+  %  (0, 45, 0)
+  %  (0, 0, 0)
+  %  (90, 25, 65)
+
+  colorList = cell(7, 2);
+  colorList{1, 1} = [35, 45, 0];
+  colorList{2, 1} = [90, 35, 45];
+  colorList{3, 1} = [42, 37, 9];
+  colorList{4, 1} = [59, 37, 63];
+  colorList{5, 1} = [0, 45, 0];
+  colorList{6, 1} = [0, 0, 0];
+  colorList{7, 1} = [90, 25, 65];
+
+
+  colorList{1, 2} = [.5, 0, 0];
+  colorList{2, 2} = [0, .5, 0];
+  colorList{3, 2} = [0, 0, .5];
+  colorList{4, 2} = [.5, .5, 0];
+  colorList{5, 2} = [0, .5, 1];
+  colorList{6, 2} = [.5, 0, .5];
+  colorList{7, 2} = [.5, .5, .5];
+
+
+  allowedMisorient = 15;
+
+  cubicSymOps = GetCubicSymOps();
+
+  test = zeros(EuLength, 2);
+  for i = 1:EuLength
+
+    minMisorient = 360;
+    minJ = -1;
+    for j = 1:7
+      currentMisorient = misorient_sym_deg(Eu(i, :), colorList{j, 1}, cubicSymOps, 24);
+      if(currentMisorient < minMisorient)
+        minMisorient = currentMisorient;
+        minJ = j;
+      end
+    end
+
+    test(i, 1) = minJ;
+    test(i, 2) = minMisorient;
+    if(minJ > -1 && minMisorient < allowedMisorient)
+      colorOut(i, :) = colorList{minJ, 2};
+    else
+      colorOut(i, :) = [0, 0, 0];
+    end
+
+  end
+  disp('end');
+  end
+
+
+% --- Executes on button press in calculateDiff.
+function calculateDiff_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton8 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+t1 = handles.uitable1;
+t2 = handles.uitable2;
+data1 = get(t1, 'Data');
+if(size(data1,1)==0)
+    return;
+end
+aveConf1 = data1(1,1);
+aveConf2 = data1(2,1);
+diffConf = abs(aveConf1-aveConf2);
+RMat1 = RMatOfBunge(transpose(data1(1,2:4)),'degrees');
+RMat2 = RMatOfBunge(transpose(data1(2,2:4)),'degrees');
+quats1 = QuatOfRMat( RMat1);
+quats2 = QuatOfRMat( RMat2);
+invQuats1 = quats1;
+invQuats1(2:4, :) = -quats1(2:4, :);
+products = QuatProd(invQuats1, quats2);
+mis = ToFundamentalRegionQ(products, CubSymmetries());
+angle = 2*acos(min(1, mis(1)));
+misorient = (180/pi)*angle;
+netRMat = RMatOfQuat( products );
+diffBungeAngles = BungeOfRMat(netRMat, 'degrees');
+axisVect = mis(2:4) / sin(misorient/2);
+axisVect = normc(axisVect);
+data2 = [diffConf, transpose(diffBungeAngles), misorient, transpose(axisVect)];
+set(t2, 'Data', data2);
+end
+
+% --- Executes on button press in setRegions.
+function setRegions_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton9 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+clearRegions_Callback(hObject, eventdata, handles)
+handles.region1 = imfreehand(handles.axes1);
+handles.region2 = imfreehand(handles.axes1);
+% Update handles structure
+guidata(hObject, handles);
+% Prepare data
+snp = handles.activeSnp;
+positions1 = getPosition(handles.region1); %Crash
+interiorMatrix1 = inpolygon(snp(:,1), snp(:,2), positions1(:,1), positions1(:,2));
+positions2 = getPosition(handles.region2);
+interiorMatrix2 = inpolygon(snp(:,1), snp(:,2), positions2(:,1), positions2(:,2));
+% Determine which voxels are within the region
+ind1 = find(interiorMatrix1(:)==1);
+ind2 = find(interiorMatrix2(:)==1);
+t1 = handles.uitable1;
+% Find average confidence of region #1
+aveConf_1 = mean(snp(ind1, 10));
+% Average Bunge of region #1
+bungeAngles = transpose(snp(ind1, 7:9));
+RMats = RMatOfBunge(bungeAngles, 'degrees');
+quats = QuatOfRMat(RMats);
+aveQuat = QuaternionAverage(quats);
+RMat = RMatOfQuat(aveQuat);
+aveBunge1 = transpose( BungeOfRMat(RMat, 'degrees') );
+% Create a set of quaternions from the average
+quats2 = repmat( aveQuat, 1, size(quats, 2) );
+% Determine inverse of the quaternions of the voxels
+invQuats = quats;
+invQuats(2:4, :) = -quats(2:4, :);
+% Take the product of the quaternions and the inverses to determine the
+% quaternions describing the misorientation
+products = QuatProd(invQuats, quats2);
+% Determine the misorientations from the quaternions
+mis = ToFundamentalRegionQ(products, CubSymmetries());
+angles = 2*acos(min(1, mis(1, :)));
+angles = (180/pi)*angles;
+% Find the average misorientation and standard deviation
+aveAngle1 = mean2( angles );
+stdAngle1 = std2( angles );
+% Find average confidence of region #2
+aveConf_2 = mean(snp(ind2, 10));
+% Average Bunge of region #2
+bungeAngles = transpose(snp(ind2, 7:9));
+RMats = RMatOfBunge(bungeAngles, 'degrees');
+quats = QuatOfRMat(RMats);
+aveQuat = QuaternionAverage(quats);
+RMat = RMatOfQuat(aveQuat);
+aveBunge2 = transpose( BungeOfRMat(RMat, 'degrees') );
+% Create a set of quaternions from the average
+quats2 = repmat( aveQuat, 1, size(quats, 2) );
+% Determine inverse of the quaternions of the voxels
+invQuats = quats;
+invQuats(2:4, :) = -quats(2:4, :);
+% Take the product of the quaternions and the inverses to determine the
+% quaternions describing the misorientation
+products = QuatProd(invQuats, quats2);
+% Determine the misorientations from the quaternions
+mis = ToFundamentalRegionQ(products, CubSymmetries());
+angles = 2*acos(min(1, mis(1, :)));
+angles = (180/pi)*angles;
+% Find the average misorientaiton and standard deviation
+aveAngle2 = mean2( angles );
+stdAngle2 = std2( angles );
+% Place the data into the array for display
+data = [aveConf_1, aveBunge1, aveAngle1, stdAngle1; aveConf_2, aveBunge2, aveAngle2, stdAngle2];
+set(t1, 'Data', data);
+end
+
+% --- Executes on button press in clearRegions.
+function clearRegions_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton10 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+plotType = handles.currPlot;
+if(plotType==1)
+    orientationPush_Callback(handles.axes1, ' ', handles);
+end
+if(plotType==2)
+    confidencePush_Callback(handles.axes1, ' ', handles)
+end
+if(plotType==3)
+    rodriguezPush_Callback(handles.axes1, ' ', handles)
+end
+t1 = handles.uitable1;
+set(t1, 'Data', []);
+t2 = handles.uitable2;
+set(t2, 'Data', []);
+% Update handles structure
+guidata(hObject, handles);
+end

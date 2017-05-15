@@ -26,6 +26,8 @@ def generate_vertices(mic_snp, sidewidth):
     up_data = np.squeeze(mic_snp[up_idx, 2:])
     down_data = np.squeeze(mic_snp[down_idx, 2:])
 
+    # Return the set of vertices (x0, y0, x1, y1, x2, y2) and data.
+    # Note that the data are reordered.
     return np.vstack((up_vert, down_vert)), np.vstack((up_data, down_data))
 
 
@@ -36,11 +38,11 @@ def gen_vertex_helper(left_vert, sw_list, points_up):
     xassert.runtime_assert(len(left_vert.shape) == 2 and
                            left_vert.shape[1] == 2,
                            'Error: vertex expected to be 2 dimensional.')
-    v1 = left_vert
-    v2 = left_vert
+    v1 = np.copy(left_vert)
+    v2 = np.copy(left_vert)
     v2[:, 0] += sw_list
 
-    v3 = left_vert
+    v3 = np.copy(left_vert)
     v3[:, 0] += sw_list / 2.0
     if points_up:
         v3[:, 1] += sw_list / 2.0 * np.sqrt(3)

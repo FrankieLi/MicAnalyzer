@@ -19,22 +19,54 @@ def plot_mic(snp, sidewidth, plot_opt, confidence):
     """
     vertices, data = utils.generate_vertices(snp, sidewidth)
 
-    plot_patch(vertices, np.squeeze(data[:, 4:7]))
+    if plot_opt == 2:
+        fig, ax, im = plot_scalar_patch(vertices, data[:, 9])
+    else:
+        # To be refactored to other types of plot.
+        colors = get_euler_color(data[:, 4:7])
+        fig, ax, im = plot_patch(vertices, colors)
+
+    # Standard centering
+    axes = fig.gca()
+    axes.set_xlim([-1 * sidewidth, sidewidth])
+    axes.set_ylim([-1 * sidewidth, sidewidth])
+    plt.show(block=False)
+
+    return fig, ax, im
 
 
-def plot_patch(vertices, color):
-
-    patches = []
-    for verts in vertices:
-        tri = Polygon(verts.reshape((3, 2)), True)
-        patches.append(tri)
-    
-    p = PatchCollection(patches, alpha=0.4)
-    colors = color
-    p.set_array(np.array(colors))
+def plot_scalar_patch(vertices, scalar, color_map=plt.cm.hot):
+    """ Plot scalar field on patches defined by vertices.
+    Note: scalar must be a sclar field! Otherwise, color map doesn't make
+    any sense!
+    """
+    patches = [Polygon(v.reshape((3, 2)), True) for v in vertices]
+    p = PatchCollection(patches, cmap=color_map)
+    p.set_array(np.array(scalar))
     fig, ax = plt.subplots()
-    ax.add_collection(p)
-    fig.colorbar(p, ax=ax)
-    plt.show()
+    im = ax.add_collection(p)
+    fig.colorbar(im, ax=ax)
+    return fig, ax, im
 
 
+def plot_patch(vertices, colors):
+
+    patches = [Polygon(v.reshape((3, 2)), True) for v in vertices]
+    p = PatchCollection(patches)
+    p.set_color(colors)
+    fig, ax = plt.subplots()
+    im = ax.add_collection(p)
+    fig.colorbar(im, ax=ax)
+    return fig, ax, im
+
+
+def get_confidence_color(conf):
+    colors = np.vstack([conf, conf, conf]).T
+    return colors
+
+
+def get_euler_color(euler_angles):
+    # assert euler_angles to be n x 3 matrix here.
+    colors = np.squeeze(euler_angles)
+    colors = [c/360.0 for c in colors]
+    return colors

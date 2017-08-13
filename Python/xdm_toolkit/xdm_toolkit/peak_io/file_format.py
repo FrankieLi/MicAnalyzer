@@ -3,6 +3,9 @@ __author__ = 'Frankie Li'
 
 """ XDM file format and convertion library.
 """
+from glob import glob
+import numpy as np
+from pathlib import Path
 
 import struct
 from xdm_toolkit import xdm_assert as xassert
@@ -44,11 +47,13 @@ def get_uint32(fd):
 def get_float32(fd):
     return struct.unpack('f', fd.read(4))[0]
 
+
 def get_float32_list(fd, len):
     float_list = []
     for i in xrange(len):
         float_list.append(get_float32(fd))
     return float_list
+
 
 def get_char(fd):
     return struct.unpack('c', fd.read(1))[0]
@@ -59,6 +64,15 @@ def get_string(fd, len):
     for i in xrange(len):
         string.append(get_char(fd))
     return ''.join(string)
+
+
+class peak_data(object):
+
+    def __init__(self, x, y, intensity, peak_id):
+        self.x = np.array(x)
+        self.y = np.array(y)
+        self.intensity = np.array(intensity)
+        self.peak_id = np.array(peak_id)
 
 
 class I9PeakReader(object):
@@ -90,7 +104,7 @@ class I9PeakReader(object):
 
         return hdr
 
-    def read(self, filename):
+    def read_uff_peak(self, filename):
         with open(filename, 'rb') as fd:
             # float32 version number
             version_number = get_float32(fd)
@@ -132,3 +146,54 @@ class I9PeakReader(object):
 
             return (x_list, y_list, intensity_list, peak_id_list)
 
+    def load_file(self, filename):
+        x, y, intensity, peak_id = self.read_uff_peak(filename)
+        p = peak_data(x, y, intensity, peak_id)
+        return p
+
+    def load_dir(self, input_dir, num_L_dist):
+        """ Load all reduced file from a specified director.
+            `input_dir` - input directory containing the reduced data set.
+            `num_L_dist` - number of detector distances.
+        """
+
+        file_lists = []
+        for n in xrange(num_L_dist):
+            p = Path(input_dir) / Path('*bin' + str(n))
+            files = glob(str(p))
+            file_lists.append(files)
+
+        file_counts = [len(f) for f in file_lists]
+        xassert.runtime_assert(len(np.unique(file_counts)) == 1,
+                               'Number of files mismatched in the data reduction directory.')
+
+        peak_list = [[] for l in file_counts]
+
+        for n in xrange(num_L_dist):
+            for p in file_lists[n]:
+                peak_list[n].append(self.load_file(p))
+        return peak_list
+
+    def load_files(self, input_dir, prefix, num_digits, idx_range, num_L_dist):
+        ''' Load files based on pattern:
+            prefix<serial_number>.bin<L_dist>
+
+            `input_dir` - Input directory.
+            `prefix` - File prefix.
+            `num_digits` - Number of digits in the serial number.
+            `idx_range` - A size two list like object designating start and
+                          stop, exclusively [start, stop).
+            `num_L_dist` - Number of L distances.
+        '''
+
+        xassert.runtime_assert(len(idx_range) == 2,
+                               'idx_range expected to have two elements.')
+
+        peak_list = [[] for l in xrange(num_L_dist)]
+        for n in xrange(num_L_dist):
+            for idx in xrange(idx_range[0], idx_range[1]):
+                filename = (prefix + str(idx).zfill(num_digits)
+                            + '.bin' + str(n))
+                p = Path(input_dir) / Path(filename)
+                peak_list[n].append(self.load_file(str(p)))
+        return peak_list

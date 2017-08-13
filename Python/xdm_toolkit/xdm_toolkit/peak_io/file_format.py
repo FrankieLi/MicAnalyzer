@@ -62,6 +62,9 @@ def get_string(fd, len):
 
 
 class I9PeakReader(object):
+    """ Standard IceNine binary peak file. This is built on top of UFF binary
+    files.
+    """
 
     def __init__(self):
         pass
@@ -128,3 +131,4 @@ class I9PeakReader(object):
             peak_id_list = get_uint16_list(fd, num_elements)
 
             return (x_list, y_list, intensity_list, peak_id_list)
+

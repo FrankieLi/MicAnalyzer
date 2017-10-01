@@ -7,8 +7,12 @@ __author__ = 'Frankie Li'
 import matplotlib.pyplot as plt
 import numpy as np
 
-def plot_peaks(peak_list):
+def plot_peaks(peak_list, plot_option, figure=None):
+
+    if figure is None:
+        figure = plt.figure()
 
     for p in peak_list:
-        plt.plot(p.x, p.y, 'k.')
-    plt.gca().invert_yaxis()
+        plt.plot(p.x, p.y, plot_option)
+
+    return figure

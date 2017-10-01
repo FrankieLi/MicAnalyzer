@@ -30,3 +30,7 @@
 
 # old svn
 *.svn
+
+# Python stuff
+*.pyc
+*.egg-info

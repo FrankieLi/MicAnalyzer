@@ -50,8 +50,8 @@ end
 
 if( nargin > 9 )
   fprintf(fd, 'FIELD Grain_Orientations 1\n');
-  fprintf(fd, 'RF 3 %i unsigned_char\n', length( OrientationField )  );
-  fprintf(fd, '%i %i %i\n', OrientationField' );
+  fprintf(fd, 'RF 3 %i float\n', length( OrientationField )  );
+  fprintf(fd, '%g %g %g\n', OrientationField' );
 end
 
 
